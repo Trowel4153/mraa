@@ -91,6 +91,9 @@ mraa_up4000_set_pininfo(mraa_board_t* board, int mraa_index, char* name,
             pin_info->i2c.pinmap = 1;
             pin_info->i2c.mux_total = 0;
         }
+        if (caps.spi) {
+            pin_info->spi.mux_total = 0;
+        }
         return MRAA_SUCCESS;
     }
     return MRAA_ERROR_INVALID_RESOURCE;
@@ -147,25 +150,27 @@ mraa_up4000_board()
     }
     syslog(LOG_NOTICE, "up4000: FPGA header gpiochip resolved to gpiochip%d", fpga_chip);
 
-    // NOTE: SPI/UART bus wiring (spi_bus/uart_dev, pwm_dev) is deliberately
-    // left unconfigured below. gpioinfo shows none of the FPGA's SPI/UART
-    // lines have a kernel consumer bound (no spi-gpio/i2c-gpio bitbang
-    // driver loaded), and the native SPI controller (spidev1.x) traces to
-    // an entirely separate PCI function with its own dedicated master, not
-    // a header-connected bitbang bus. That's consistent with them not being
-    // routed to the header, but unlike I2C below it hasn't been confirmed
-    // by seeing a real device respond, because /dev/spidev1.x and
-    // /dev/ttyS* weren't accessible to test with. (An earlier attempt to
-    // test I2C the same way as this SPI/UART reasoning - watching the FPGA's
-    // GPIO lines with gpiomon for activity correlated with i2cdetect - gave
-    // a false negative: since the FPGA emulates Raspberry Pi BCM pin
-    // muxing, requesting a line as chardev GPIO likely disconnects its
-    // alt-function path, so no electrical activity would show up there
-    // either way. Don't repeat that method for SPI/UART.) I2C, by contrast,
-    // was confirmed by observing real header-attached devices (GPIO
-    // expanders, sensors) respond over i2cdetect on the native SoC I2C
-    // controllers below, so it's wired up despite going through the FPGA
-    // physically - the same native PCI functions are used as on the UP2.
+    // NOTE: UART bus wiring (uart_dev, pwm_dev) is deliberately left
+    // unconfigured below. gpioinfo shows none of the FPGA's UART lines have
+    // a kernel consumer bound (no spi-gpio/i2c-gpio bitbang driver loaded),
+    // which is consistent with UART not being routed to the header, but
+    // unlike I2C/SPI below it hasn't been confirmed by seeing a real device
+    // respond, because /dev/ttyS* wasn't accessible to test with. (An
+    // earlier attempt to test I2C the same way as this UART reasoning -
+    // watching the FPGA's GPIO lines with gpiomon for activity correlated
+    // with i2cdetect - gave a false negative: since the FPGA emulates
+    // Raspberry Pi BCM pin muxing, requesting a line as chardev GPIO likely
+    // disconnects its alt-function path, so no electrical activity would
+    // show up there either way. Don't repeat that method for UART.) I2C was
+    // confirmed by observing real header-attached devices respond over
+    // i2cdetect on the native SoC I2C controllers below. SPI is wired up on
+    // the same reasoning (no bitbang consumer on the FPGA lines, a dedicated
+    // native PCI SPI master with its own PCI function - same pattern as
+    // I2C/UP2), but as of this writing that has NOT been empirically
+    // confirmed with a real device or MOSI/MISO loopback, because
+    // /dev/spidev1.x was root-only (crw------- root root, no group) with no
+    // sudo access available to test with. Verify with a loopback or real
+    // peripheral before trusting this in the field.
     mraa_up4000_set_pininfo(b, 0, "INVALID",    (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 1, "3.3v",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 2, "5v",         (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
@@ -188,15 +193,15 @@ mraa_up4000_board()
     mraa_up4000_set_pininfo(b, 17, "3.3v",      (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     // Reaction wheel RPM
     mraa_up4000_set_pininfo(b, 18, "GPIO24",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 24);
-    mraa_up4000_set_pininfo(b, 19, "SPI0_MOSI", (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 10);
+    mraa_up4000_set_pininfo(b, 19, "SPI0_MOSI", (mraa_pincapabilities_t) {1, 1, 0, 0, 1, 0, 0, 0}, fpga_chip, 10);
     mraa_up4000_set_pininfo(b, 20, "GND",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
-    mraa_up4000_set_pininfo(b, 21, "SPI0_MISO", (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 9);
+    mraa_up4000_set_pininfo(b, 21, "SPI0_MISO", (mraa_pincapabilities_t) {1, 1, 0, 0, 1, 0, 0, 0}, fpga_chip, 9);
     // Reaction wheel RPM
     mraa_up4000_set_pininfo(b, 22, "GPIO25",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 25);
-    mraa_up4000_set_pininfo(b, 23, "SPI0_CLK",  (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 11);
-    mraa_up4000_set_pininfo(b, 24, "SPI0_CS0",  (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 8);
+    mraa_up4000_set_pininfo(b, 23, "SPI0_CLK",  (mraa_pincapabilities_t) {1, 1, 0, 0, 1, 0, 0, 0}, fpga_chip, 11);
+    mraa_up4000_set_pininfo(b, 24, "SPI0_CS0",  (mraa_pincapabilities_t) {1, 1, 0, 0, 1, 0, 0, 0}, fpga_chip, 8);
     mraa_up4000_set_pininfo(b, 25, "GND",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
-    mraa_up4000_set_pininfo(b, 26, "SPI0_CS1",  (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 7);
+    mraa_up4000_set_pininfo(b, 26, "SPI0_CS1",  (mraa_pincapabilities_t) {1, 1, 0, 0, 1, 0, 0, 0}, fpga_chip, 7);
     mraa_up4000_set_pininfo(b, 27, "ID_SD",     (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 1, 0, 0}, fpga_chip, 0);
     mraa_up4000_set_pininfo(b, 28, "ID_SC",     (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 1, 0, 0}, fpga_chip, 1);
     // GPIO expander reset (PropBoard 1)
@@ -251,6 +256,30 @@ mraa_up4000_board()
 
     b->spi_bus_count = 0;
     b->def_spi_bus = 0;
+
+    // Configure SPI #0 CS0 (default)
+    // Header SPI pins trace to a dedicated native PCI SPI master
+    // (0000:00:19.0, pxa2xx-spi.5 -> /sys/class/spi_master/spi1), the same
+    // pattern used for I2C above and matching the UP2's wiring - there's no
+    // spi-gpio bitbang consumer on the FPGA's SPI lines. mraa has no
+    // generic PCI-based SPI bus resolver (unlike mraa_find_i2c_bus_pci; the
+    // sysfs layout differs), so bus_id is hardcoded to 1, same as up2.c.
+    b->spi_bus[0].bus_id = 1;
+    b->spi_bus[0].slave_s = 0;
+    mraa_up4000_get_pin_index(b, "SPI0_CS0",  &(b->spi_bus[0].cs));
+    mraa_up4000_get_pin_index(b, "SPI0_MOSI", &(b->spi_bus[0].mosi));
+    mraa_up4000_get_pin_index(b, "SPI0_MISO", &(b->spi_bus[0].miso));
+    mraa_up4000_get_pin_index(b, "SPI0_CLK",  &(b->spi_bus[0].sclk));
+    b->spi_bus_count++;
+
+    // Configure SPI #0 CS1
+    b->spi_bus[1].bus_id = 1;
+    b->spi_bus[1].slave_s = 1;
+    mraa_up4000_get_pin_index(b, "SPI0_CS1",  &(b->spi_bus[1].cs));
+    mraa_up4000_get_pin_index(b, "SPI0_MOSI", &(b->spi_bus[1].mosi));
+    mraa_up4000_get_pin_index(b, "SPI0_MISO", &(b->spi_bus[1].miso));
+    mraa_up4000_get_pin_index(b, "SPI0_CLK",  &(b->spi_bus[1].sclk));
+    b->spi_bus_count++;
 
     b->uart_dev_count = 0;
     b->def_uart_dev = 0;
