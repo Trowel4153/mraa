@@ -26,6 +26,7 @@
 #include "x86/iei_tank.h"
 #include "x86/intel_adlink_lec_al.h"
 #include "x86/up_xtreme.h"
+#include "x86/up4000.h"
 
 mraa_platform_t
 mraa_x86_platform()
@@ -88,6 +89,9 @@ mraa_x86_platform()
             } else if (strncasecmp(line, "UP-APL01", strlen("UP-APL01") + 1) == 0) {
                 platform_type = MRAA_UP2;
                 plat = mraa_up2_board();
+            } else if (strncasecmp(line, "UP-APL03", strlen("UP-APL03") + 1) == 0) {
+                platform_type = MRAA_UP4000;
+                plat = mraa_up4000_board();
             } else if (strncasecmp(line, "RVP", strlen("RVP") + 1) == 0) {
                 platform_type = MRAA_INTEL_JOULE_EXPANSION;
                 plat = mraa_joule_expansion_board();
@@ -172,6 +176,8 @@ mraa_x86_platform()
     plat = mraa_iei_tank();
     #elif defined(xMRAA_UPXTREME)
     plat = mraa_upxtreme_board();
+    #elif defined(xMRAA_UP4000)
+    plat = mraa_up4000_board();
     #else
         #error "Not using a valid platform value from mraa_platform_t - cannot compile"
     #endif
