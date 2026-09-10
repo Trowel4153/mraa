@@ -87,8 +87,28 @@ mraa_up4000_set_pininfo(mraa_board_t* board, int mraa_index, char* name,
             pin_info->gpio.gpio_chip = chip;
             pin_info->gpio.gpio_line = line;
         }
+        if (caps.i2c) {
+            pin_info->i2c.pinmap = 1;
+            pin_info->i2c.mux_total = 0;
+        }
         return MRAA_SUCCESS;
     }
+    return MRAA_ERROR_INVALID_RESOURCE;
+}
+
+static mraa_result_t
+mraa_up4000_get_pin_index(mraa_board_t* board, char* name, int* pin_index)
+{
+    int i;
+    for (i = 0; i < board->phy_pin_count; ++i) {
+        if (strncmp(name, board->pins[i].name, MRAA_PIN_NAME_SIZE) == 0) {
+            *pin_index = i;
+            return MRAA_SUCCESS;
+        }
+    }
+
+    syslog(LOG_CRIT, "up4000: Failed to find pin name %s", name);
+
     return MRAA_ERROR_INVALID_RESOURCE;
 }
 
@@ -127,16 +147,31 @@ mraa_up4000_board()
     }
     syslog(LOG_NOTICE, "up4000: FPGA header gpiochip resolved to gpiochip%d", fpga_chip);
 
-    // NOTE: I2C/SPI/UART bus wiring (i2c_bus/spi_bus/uart_dev, pwm_dev) is
-    // deliberately left unconfigured below. The header signals for those
-    // buses are only exposed here as plain chardev GPIO lines on the FPGA
-    // until the actual bus routing on this board has been verified.
+    // NOTE: SPI/UART bus wiring (spi_bus/uart_dev, pwm_dev) is deliberately
+    // left unconfigured below. gpioinfo shows none of the FPGA's SPI/UART
+    // lines have a kernel consumer bound (no spi-gpio/i2c-gpio bitbang
+    // driver loaded), and the native SPI controller (spidev1.x) traces to
+    // an entirely separate PCI function with its own dedicated master, not
+    // a header-connected bitbang bus. That's consistent with them not being
+    // routed to the header, but unlike I2C below it hasn't been confirmed
+    // by seeing a real device respond, because /dev/spidev1.x and
+    // /dev/ttyS* weren't accessible to test with. (An earlier attempt to
+    // test I2C the same way as this SPI/UART reasoning - watching the FPGA's
+    // GPIO lines with gpiomon for activity correlated with i2cdetect - gave
+    // a false negative: since the FPGA emulates Raspberry Pi BCM pin
+    // muxing, requesting a line as chardev GPIO likely disconnects its
+    // alt-function path, so no electrical activity would show up there
+    // either way. Don't repeat that method for SPI/UART.) I2C, by contrast,
+    // was confirmed by observing real header-attached devices (GPIO
+    // expanders, sensors) respond over i2cdetect on the native SoC I2C
+    // controllers below, so it's wired up despite going through the FPGA
+    // physically - the same native PCI functions are used as on the UP2.
     mraa_up4000_set_pininfo(b, 0, "INVALID",    (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 1, "3.3v",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 2, "5v",         (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
-    mraa_up4000_set_pininfo(b, 3, "I2C_SDA",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 2);
+    mraa_up4000_set_pininfo(b, 3, "I2C_SDA",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 1, 0, 0}, fpga_chip, 2);
     mraa_up4000_set_pininfo(b, 4, "5v",         (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
-    mraa_up4000_set_pininfo(b, 5, "I2C_SCL",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 3);
+    mraa_up4000_set_pininfo(b, 5, "I2C_SCL",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 1, 0, 0}, fpga_chip, 3);
     mraa_up4000_set_pininfo(b, 6, "GND",        (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 7, "GPIO4",      (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 4);
     mraa_up4000_set_pininfo(b, 8, "UART_TX",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 14);
@@ -162,8 +197,8 @@ mraa_up4000_board()
     mraa_up4000_set_pininfo(b, 24, "SPI0_CS0",  (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 8);
     mraa_up4000_set_pininfo(b, 25, "GND",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 26, "SPI0_CS1",  (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 7);
-    mraa_up4000_set_pininfo(b, 27, "ID_SD",     (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 0);
-    mraa_up4000_set_pininfo(b, 28, "ID_SC",     (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 1);
+    mraa_up4000_set_pininfo(b, 27, "ID_SD",     (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 1, 0, 0}, fpga_chip, 0);
+    mraa_up4000_set_pininfo(b, 28, "ID_SC",     (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 1, 0, 0}, fpga_chip, 1);
     // GPIO expander reset (PropBoard 1)
     mraa_up4000_set_pininfo(b, 29, "GPIO5",     (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 5);
     mraa_up4000_set_pininfo(b, 30, "GND",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
@@ -186,6 +221,30 @@ mraa_up4000_board()
 
     b->i2c_bus_count = 0;
     b->def_i2c_bus = 0;
+    int i2c_bus_num;
+
+    // Configure I2C adaptor #0 (default)
+    // Confirmed via i2cdetect: real header-attached devices (GPIO
+    // expanders, sensors) respond on this native adaptor.
+    i2c_bus_num = mraa_find_i2c_bus_pci("0000:00", "0000:00:16.1", "i2c_designware.1");
+    if (i2c_bus_num != -1) {
+        int i = b->i2c_bus_count;
+        b->i2c_bus[i].bus_id = i2c_bus_num;
+        mraa_up4000_get_pin_index(b, "I2C_SDA", &(b->i2c_bus[i].sda));
+        mraa_up4000_get_pin_index(b, "I2C_SCL", &(b->i2c_bus[i].scl));
+        b->i2c_bus_count++;
+    }
+
+    // Configure I2C adaptor #1
+    // (normally reserved for accessing HAT EEPROM)
+    i2c_bus_num = mraa_find_i2c_bus_pci("0000:00", "0000:00:16.0", "i2c_designware.0");
+    if (i2c_bus_num != -1) {
+        int i = b->i2c_bus_count;
+        b->i2c_bus[i].bus_id = i2c_bus_num;
+        mraa_up4000_get_pin_index(b, "ID_SD", &(b->i2c_bus[i].sda));
+        mraa_up4000_get_pin_index(b, "ID_SC", &(b->i2c_bus[i].scl));
+        b->i2c_bus_count++;
+    }
 
     b->pwm_dev_count = 0;
     b->def_pwm_dev = 0;
