@@ -150,27 +150,26 @@ mraa_up4000_board()
     }
     syslog(LOG_NOTICE, "up4000: FPGA header gpiochip resolved to gpiochip%d", fpga_chip);
 
-    // NOTE: UART bus wiring (uart_dev, pwm_dev) is deliberately left
-    // unconfigured below. gpioinfo shows none of the FPGA's UART lines have
-    // a kernel consumer bound (no spi-gpio/i2c-gpio bitbang driver loaded),
-    // which is consistent with UART not being routed to the header, but
-    // unlike I2C/SPI below it hasn't been confirmed by seeing a real device
-    // respond, because /dev/ttyS* wasn't accessible to test with. (An
-    // earlier attempt to test I2C the same way as this UART reasoning -
-    // watching the FPGA's GPIO lines with gpiomon for activity correlated
-    // with i2cdetect - gave a false negative: since the FPGA emulates
-    // Raspberry Pi BCM pin muxing, requesting a line as chardev GPIO likely
-    // disconnects its alt-function path, so no electrical activity would
-    // show up there either way. Don't repeat that method for UART.) I2C was
-    // confirmed by observing real header-attached devices respond over
-    // i2cdetect on the native SoC I2C controllers below. SPI is wired up on
-    // the same reasoning (no bitbang consumer on the FPGA lines, a dedicated
-    // native PCI SPI master with its own PCI function - same pattern as
-    // I2C/UP2), but as of this writing that has NOT been empirically
-    // confirmed with a real device or MOSI/MISO loopback, because
-    // /dev/spidev1.x was root-only (crw------- root root, no group) with no
-    // sudo access available to test with. Verify with a loopback or real
-    // peripheral before trusting this in the field.
+    // NOTE: UART TX (pin 8) is confirmed with a logic analyzer: while
+    // continuously writing to /dev/ttyS5, a clean, error-free async serial
+    // decode (115200 8N1) was captured on this pin. /dev/ttyS5 is the
+    // native SoC UART reached via PCI 0000:00:18.1 (dw-apb-uart.4) - NOT
+    // /dev/ttyS4 / 0000:00:18.0 (dw-apb-uart.3), which is the other LPSS
+    // HSUART PCI function and was initially assumed to be the header UART
+    // but produced no activity on any header pin under the same test.
+    // RX/RTS/CTS (pins 10/11/36) are wired up on the matching FPGA line
+    // numbers per the UP2's documented UART pin mapping, but have NOT been
+    // individually confirmed with a loopback or real peripheral - only TX
+    // has been directly observed. SPI is wired up on the same
+    // native-PCI-function reasoning used for UART/I2C (no bitbang consumer
+    // on the FPGA lines, a dedicated PCI SPI master, same pattern as
+    // UP2), but as of this writing has NOT been empirically confirmed with
+    // a real device or MOSI/MISO loopback, because /dev/spidev1.x was
+    // root-only (crw------- root root, no group) with no sudo access
+    // available to test with. I2C was confirmed by observing real
+    // header-attached devices respond over i2cdetect on the native SoC I2C
+    // controllers below. Verify SPI and UART RX/RTS/CTS with a loopback or
+    // real peripheral before trusting them in the field.
     mraa_up4000_set_pininfo(b, 0, "INVALID",    (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 1, "3.3v",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 2, "5v",         (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
@@ -179,10 +178,10 @@ mraa_up4000_board()
     mraa_up4000_set_pininfo(b, 5, "I2C_SCL",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 1, 0, 0}, fpga_chip, 3);
     mraa_up4000_set_pininfo(b, 6, "GND",        (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     mraa_up4000_set_pininfo(b, 7, "GPIO4",      (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 4);
-    mraa_up4000_set_pininfo(b, 8, "UART_TX",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 14);
+    mraa_up4000_set_pininfo(b, 8, "UART_TX",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 1}, fpga_chip, 14);
     mraa_up4000_set_pininfo(b, 9, "GND",        (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
-    mraa_up4000_set_pininfo(b, 10, "UART_RX",   (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 15);
-    mraa_up4000_set_pininfo(b, 11, "GPIO17",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 17);
+    mraa_up4000_set_pininfo(b, 10, "UART_RX",   (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 1}, fpga_chip, 15);
+    mraa_up4000_set_pininfo(b, 11, "UART_RTS",  (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 1}, fpga_chip, 17);
     mraa_up4000_set_pininfo(b, 12, "GPIO18",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 18);
     mraa_up4000_set_pininfo(b, 13, "GPIO27",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 27);
     mraa_up4000_set_pininfo(b, 14, "GND",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
@@ -216,7 +215,7 @@ mraa_up4000_board()
     mraa_up4000_set_pininfo(b, 34, "GND",       (mraa_pincapabilities_t) {0, 0, 0, 0, 0, 0, 0, 0}, fpga_chip, -1);
     // GPIO expander reset (IOBoard 2)
     mraa_up4000_set_pininfo(b, 35, "GPIO19",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 19);
-    mraa_up4000_set_pininfo(b, 36, "GPIO16",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 16);
+    mraa_up4000_set_pininfo(b, 36, "UART_CTS",  (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 1}, fpga_chip, 16);
     mraa_up4000_set_pininfo(b, 37, "GPIO26",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 26);
     // Voltage control
     mraa_up4000_set_pininfo(b, 38, "GPIO20",    (mraa_pincapabilities_t) {1, 1, 0, 0, 0, 0, 0, 0}, fpga_chip, 20);
@@ -283,6 +282,22 @@ mraa_up4000_board()
 
     b->uart_dev_count = 0;
     b->def_uart_dev = 0;
+
+    // Configure UART #0 (default)
+    // Confirmed via logic analyzer: TX (pin 8) shows a clean async serial
+    // decode while continuously writing to /dev/ttyS5. This is
+    // 0000:00:18.1 / dw-apb-uart.4, not 0000:00:18.0 / dw-apb-uart.3
+    // (/dev/ttyS4), which is the other native PCI HSUART and was ruled out
+    // by the same test (no activity on any header pin).
+    if (mraa_find_uart_bus_pci(
+            "/sys/bus/pci/devices/0000:00:18.1/dw-apb-uart.4/dw-apb-uart.4:0/dw-apb-uart.4:0.0/tty/",
+            &(b->uart_dev[0].device_path)) == MRAA_SUCCESS) {
+        mraa_up4000_get_pin_index(b, "UART_RX", &(b->uart_dev[0].rx));
+        mraa_up4000_get_pin_index(b, "UART_TX", &(b->uart_dev[0].tx));
+        mraa_up4000_get_pin_index(b, "UART_CTS", &(b->uart_dev[0].cts));
+        mraa_up4000_get_pin_index(b, "UART_RTS", &(b->uart_dev[0].rts));
+        b->uart_dev_count++;
+    }
 
     b->aio_count = 0;
 
