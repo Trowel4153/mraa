@@ -115,6 +115,13 @@ mraa_up4000_get_pin_index(mraa_board_t* board, char* name, int* pin_index)
     return MRAA_ERROR_INVALID_RESOURCE;
 }
 
+static inline void
+mraa_up4000_setup_led(mraa_board_t* board, char* name)
+{
+    board->led_dev[board->led_dev_count].name = name;
+    board->led_dev_count++;
+}
+
 mraa_board_t*
 mraa_up4000_board()
 {
@@ -300,6 +307,13 @@ mraa_up4000_board()
     }
 
     b->aio_count = 0;
+
+    // Onboard status LEDs (/sys/class/leds/upboard:<colour>:status),
+    // indexed left-to-right as laid out on the board.
+    b->led_dev_count = 0;
+    mraa_up4000_setup_led(b, "yellow");
+    mraa_up4000_setup_led(b, "green");
+    mraa_up4000_setup_led(b, "red");
 
     return b;
 
